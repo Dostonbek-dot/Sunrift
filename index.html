@@ -132,6 +132,13 @@
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
+      function srPixelRatio() {
+        var d = window.devicePixelRatio || 1;
+        if (!(window.matchMedia && matchMedia("(pointer: coarse)").matches)) return Math.min(d, 1.25);
+        var shortSide = Math.min(window.innerWidth, window.innerHeight);
+        if (shortSide * 1.25 < 600) return Math.max(1, Math.min(d, 590 / shortSide));   // phones
+        return Math.min(d, 2);                                                            // tablets
+      }
       createUnityInstance(canvas, {
         // hidden "?selftest" → the built-in autopilot smoke test (separate test save) for automated verification
         // hidden "?touchtest" → the v8 touch test (finger-drag steering vs the autopilot, buttons, swipe) on this canvas
@@ -144,14 +151,17 @@
         companyName: "Doston",
         productName: "Sunrift",
         productVersion: "1.0.0",
-        // retina laptops: 1.25 keeps the fill rate sane; phones need more (1.25 on a ~2.6× phone screen + the LOW 0.7 render scale
-        // looked blurry) → up to 2, which also makes web AUTO start phones at MEDIUM (it still steps down if fps < 45)
-        devicePixelRatio: Math.min(window.devicePixelRatio || 1, window.matchMedia && matchMedia("(pointer: coarse)").matches ? 2 : 1.25),
+        // pixel ratio: laptops 1.25 (fill rate); phones as sharp as possible while the canvas stays < 600 px tall — the game's
+        // phone layout (big cards / text, TouchInput.PhoneLayout) switches on below 600 px, and a flat 2× pushed phones into the
+        // tiny desktop layout; tablets up to 2. Re-applied on resize / rotation (see below).
+        devicePixelRatio: srPixelRatio(),
       }, function (p) {
         fill.style.width = (100 * p) + "%";
         pct.textContent = "LOADING  " + Math.round(100 * p) + "%";
       }).then(function (unityInstance) {
         try { sessionStorage.removeItem("sr_retry"); } catch (x) {}
+        var keepRatio = function () { if (unityInstance.Module) unityInstance.Module.devicePixelRatio = srPixelRatio(); };
+        window.addEventListener("resize", keepRatio); window.addEventListener("orientationchange", keepRatio);
         document.querySelector("#loading").classList.add("done");
         canvas.focus();
         document.querySelector("#fs").onclick = function () { unityInstance.SetFullscreen(1); };
