@@ -9,6 +9,11 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="theme-color" content="#1a1020">
+    <!-- v8.1 Add to Home Screen: opens fullscreen like an app (iPhone has no fullscreen API for pages) -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Sunrift">
     <style>
       @font-face { font-family: "Chakra Petch"; src: url("TemplateData/ChakraPetch-Bold.ttf") format("truetype"); font-weight: 700; }
       @font-face { font-family: "Chakra Petch"; src: url("TemplateData/ChakraPetch-Regular.ttf") format("truetype"); font-weight: 400; }
@@ -36,6 +41,7 @@
       .bar { width: min(420px, 60vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,.12); overflow: hidden; }
       #fill { width: 0%; height: 100%; background: #3ef2ff; border-radius: 3px; box-shadow: 0 0 10px #3ef2ff; transition: width .15s linear; }
       #pct { margin-top: 12px; font-size: 13px; letter-spacing: .3em; opacity: .55; }
+      #inapp { display: none; margin-top: 22px; font-size: 12px; letter-spacing: .12em; color: #FFD27A; opacity: .9; text-align: center; padding: 0 20px; }
       #fs { position: absolute; right: 14px; bottom: 14px; width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25);
             background: rgba(18,10,28,.55); color: #fff; cursor: pointer; opacity: .55; transition: opacity .2s; padding: 0; }
       #fs:hover { opacity: 1; }
@@ -51,6 +57,7 @@
         <img class="logo" src="TemplateData/logo.png" alt="" onload="this.classList.add('ready')">
         <div class="bar"><div id="fill"></div></div>
         <div id="pct">LOADING</div>
+        <div id="inapp"></div>
       </div>
       <button id="fs" title="Fullscreen" aria-label="Fullscreen">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -63,6 +70,7 @@
       // (GL_INVALID_OPERATION, "Mismatch between texture format and sampler type") and the canyon / ship / bosses vanish.
       // This swaps a 1x1 depth texture (compare on, depth 1 = fully lit) into those slots for just that draw.
       (function () {
+        if (/[?&]noshim\b/.test(location.search)) return;   // test switch: check the in-build fix without this safety net
         var getCtx = HTMLCanvasElement.prototype.getContext;
         HTMLCanvasElement.prototype.getContext = function (type, attrs) {
           var gl = getCtx.call(this, type, attrs);
@@ -132,6 +140,17 @@
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
+      // v8.1: in-app browsers (Telegram / Instagram / Facebook WebViews) give games little memory → black screens on weaker
+      // phones. One short tip on the loader, only there.
+      (function () {
+        var ua = navigator.userAgent || "", ios = /iPhone|iPad|iPod/.test(ua);
+        var inApp = /Telegram|Instagram|FBAN|FBAV|Line\//i.test(ua) || /; wv\)/.test(ua) || (ios && !/Safari\//.test(ua));
+        if (!inApp) return;
+        var ru = /^ru/i.test(navigator.language || ""), browser = ios ? "Safari" : "Chrome";
+        var el = document.querySelector("#inapp");
+        el.textContent = ru ? "⋮ → «Открыть в " + browser + "» — игра пойдёт плавнее" : "⋮ → Open in " + browser + " for smoother play";
+        el.style.display = "block";
+      })();
       function srPixelRatio() {
         var d = window.devicePixelRatio || 1;
         if (!(window.matchMedia && matchMedia("(pointer: coarse)").matches)) return Math.min(d, 1.25);
