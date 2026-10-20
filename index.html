@@ -20,7 +20,10 @@
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #1a1020; }
       /* iPhone Safari ignores user-scalable=no: quick double taps (e.g. the roll buttons) were eaten as double-tap zoom */
       html, body, #frame, #unity-canvas { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-      body { font-family: "Chakra Petch", system-ui, sans-serif; color: #f4f1ea; }
+      /* v8.1: Russian loader words — Cyrillic-only cut of Tektur (the game's RU font), ~8 KB each, loads only when needed */
+      @font-face { font-family: "Tektur Cyr"; src: url("TemplateData/Tektur-Cyr-Bold.woff") format("woff"); font-weight: 700; unicode-range: U+0400-04FF, U+00AB, U+00BB, U+2026, U+2014; }
+      @font-face { font-family: "Tektur Cyr"; src: url("TemplateData/Tektur-Cyr-Regular.woff") format("woff"); font-weight: 400; unicode-range: U+0400-04FF, U+00AB, U+00BB, U+2026, U+2014; }
+      body { font-family: "Chakra Petch", "Tektur Cyr", system-ui, sans-serif; color: #f4f1ea; }
       #frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
                width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); background: #120a1c; }
       #unity-canvas { width: 100%; height: 100%; display: block; background: #120a1c; outline: none; }
@@ -42,9 +45,11 @@
       #fill { width: 0%; height: 100%; background: #3ef2ff; border-radius: 3px; box-shadow: 0 0 10px #3ef2ff; transition: width .15s linear; }
       #pct { margin-top: 12px; font-size: 13px; letter-spacing: .3em; opacity: .55; }
       #inapp { display: none; margin-top: 22px; font-size: 12px; letter-spacing: .12em; color: #FFD27A; opacity: .9; text-align: center; padding: 0 20px; }
-      #fs { position: absolute; right: 14px; bottom: 14px; width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25);
+      /* sits just left of the in-game speaker button (UI 54 px at 1920×1080, centre 62/58 from the corner) */
+      #fs { position: absolute; right: calc(9.54vh + 6px); bottom: max(14px, calc(5.37vh - 20px)); width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,.25);
             background: rgba(18,10,28,.55); color: #fff; cursor: pointer; opacity: .55; transition: opacity .2s; padding: 0; }
       #fs:hover { opacity: 1; }
+      @media (pointer: coarse) { #fs { display: none; } }
       #fs svg { width: 20px; height: 20px; display: block; margin: auto; }
       #error { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; text-align: center; padding: 24px;
                background: #0b0612; color: #ff8a7a; letter-spacing: .08em; }
@@ -136,17 +141,82 @@
         };
       })();
     </script>
-    <script src="Build/Web.loader.js"></script>
+    <script src="Build/web16.loader.js"></script>
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
+      // v8.1: loader words follow the browser language (the in-game language lives in the save, which isn't loaded yet)
+      var RU = /^ru/i.test(navigator.language || "");
+      var IOS = /iPhone|iPad|iPod/.test(navigator.userAgent || ""), BROWSER = IOS ? "Safari" : "Chrome";
+      var T = RU ? { load: "ЗАГРУЗКА", retry: "ПОВТОР…", fail: "ЗАГРУЗКА ПРЕРВАНА", start: "ЗАПУСК…",
+                     failHint: "Проверьте подключение (лучше через Wi-Fi) и нажмите, чтобы попробовать снова.",
+                     nogl: "3D-ГРАФИКА НЕДОСТУПНА",
+                     noglHint: "Этот браузер не смог запустить 3D-графику игры (WebGL). Откройте ссылку в " + BROWSER + ".",
+                     stall: "ИГРА НЕ ЗАПУСТИЛАСЬ",
+                     stallHint: "Нажмите, чтобы попробовать снова. Если экран останется чёрным, откройте ссылку в " + BROWSER + ".",
+                     lost: "ГРАФИКА ОСТАНОВЛЕНА",
+                     lostHint: "Устройству не хватило памяти. Нажмите, чтобы перезапустить (прогресс сохранён). Лучше всего игра идёт в " + BROWSER + ".",
+                     tap: "Нажмите, чтобы попробовать снова" }
+                 : { load: "LOADING", retry: "RETRYING", fail: "DOWNLOAD INTERRUPTED", start: "STARTING…",
+                     failHint: "Check your connection (Wi-Fi works best) and tap to try again.",
+                     nogl: "3D GRAPHICS UNAVAILABLE",
+                     noglHint: "This browser couldn't start the game's 3D graphics (WebGL). Open the link in " + BROWSER + ".",
+                     stall: "THE GAME DIDN'T START",
+                     stallHint: "Tap to try again. If the screen stays black, open the link in " + BROWSER + ".",
+                     lost: "GRAPHICS STOPPED",
+                     lostHint: "The device ran out of memory. Tap to restart (your progress is saved). The game runs best in " + BROWSER + ".",
+                     tap: "Tap to try again" };
+      pct.textContent = T.load;
+      // v8.1 weak phones: one full-screen message panel (download failed / no WebGL / never drew / graphics lost / crashed).
+      // Tap = reload (unless the panel says otherwise). Hidden again if the game draws after all.
+      var panelKind = "";
+      function showPanel(kind, title, hint, detail, onTap) {
+        var e = document.querySelector("#error");
+        panelKind = kind;
+        e.style.display = "flex"; e.style.flexDirection = "column"; e.style.cursor = "pointer";
+        e.innerHTML = '<div style="font-size:20px;letter-spacing:.12em;color:#f4f1ea"></div>'
+          + '<div style="margin-top:10px;opacity:.75;max-width:560px;line-height:1.45"></div>'
+          + '<div style="margin-top:22px;font-size:11px;opacity:.35;max-width:560px;word-break:break-word"></div>';
+        e.children[0].textContent = title; e.children[1].textContent = hint;
+        e.lastChild.textContent = detail ? String(detail).slice(0, 300) : "";
+        e.onclick = onTap || function () {
+          try { sessionStorage.removeItem("sr_retry"); } catch (x) {}
+          location.reload();
+        };
+      }
+      function hidePanel(kind) {
+        if (panelKind !== kind) return;
+        panelKind = "";
+        document.querySelector("#error").style.display = "none";
+      }
+      // v8.1: the loader stays up until the game has REALLY drawn (WebBoot.cs → SunriftWeb.jslib SunriftFirstFrame), not just until
+      // createUnityInstance resolves — weak phones can spend seconds compiling shaders, or end up with a dead WebGL context.
+      var revealed = false, stallTimer = 0;
+      function reveal() {
+        if (revealed) return;
+        revealed = true;
+        clearTimeout(stallTimer);
+        hidePanel("stall");
+        // two browser frames: the frame Unity just rendered is on screen before the loader fades
+        requestAnimationFrame(function () { requestAnimationFrame(function () { document.querySelector("#loading").classList.add("done"); }); });
+      }
+      window.addEventListener("sunrift-first-frame", reveal);
+      function armStall(ms) {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(function () { if (!revealed && !panelKind) showPanel("stall", T.stall, T.stallHint, ""); }, ms);
+      }
+      // a phone can drop the game's graphics (low memory, long time in the background) → never a silent black screen
+      canvas.addEventListener("webglcontextlost", function (ev) {
+        console.warn("[Sunrift] WebGL context lost");
+        showPanel("lost", T.lost, T.lostHint, "");
+      }, false);
       // v8.1: in-app browsers (Telegram / Instagram / Facebook WebViews) give games little memory → black screens on weaker
       // phones. One short tip on the loader, only there.
       (function () {
         var ua = navigator.userAgent || "", ios = /iPhone|iPad|iPod/.test(ua);
         var inApp = /Telegram|Instagram|FBAN|FBAV|Line\//i.test(ua) || /; wv\)/.test(ua) || (ios && !/Safari\//.test(ua));
         if (!inApp) return;
-        var ru = /^ru/i.test(navigator.language || ""), browser = ios ? "Safari" : "Chrome";
+        var ru = RU, browser = ios ? "Safari" : "Chrome";
         var el = document.querySelector("#inapp");
         el.textContent = ru ? "⋮ → «Открыть в " + browser + "» — игра пойдёт плавнее" : "⋮ → Open in " + browser + " for smoother play";
         el.style.display = "block";
@@ -162,10 +232,11 @@
         // hidden "?selftest" → the built-in autopilot smoke test (separate test save) for automated verification
         // hidden "?touchtest" → the v8 touch test (finger-drag steering vs the autopilot, buttons, swipe) on this canvas
         arguments: /[?&]selftest\b/.test(location.search) ? ["-autotest", "25", "-seed", "12345"]
-          : /[?&]touchtest\b/.test(location.search) ? ["-v8touch", "-seed", "12345", "-timescale", "1", "-savekey", "webtouch"] : [],
-        dataUrl: "Build/Web.data.unityweb",
-        frameworkUrl: "Build/Web.framework.js.unityweb",
-        codeUrl: "Build/Web.wasm.unityweb",
+          : /[?&]touchtest\b/.test(location.search) ? ["-v8touch", "-seed", "12345", "-timescale", "1", "-savekey", "webtouch"]
+          : /[?&]v81web\b/.test(location.search) ? ["-v81web", "-seed", "12345", "-timescale", "1", "-savekey", "webv81"] : [],
+        dataUrl: "Build/web16.data.unityweb",
+        frameworkUrl: "Build/web16.framework.js.unityweb",
+        codeUrl: "Build/web16.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Doston",
         productName: "Sunrift",
@@ -174,14 +245,25 @@
         // phone layout (big cards / text, TouchInput.PhoneLayout) switches on below 600 px, and a flat 2× pushed phones into the
         // tiny desktop layout; tablets up to 2. Re-applied on resize / rotation (see below).
         devicePixelRatio: srPixelRatio(),
+        // v8.1: crashes while running (out of memory, wasm abort) used to raise an English developer alert() — which Telegram's
+        // in-app browser swallows → black screen. Show the localized panel instead; anything else is only logged.
+        errorHandler: function (msg) {
+          var m = String(msg || "");
+          console.error("[Sunrift] " + m);
+          if (/memory|abort|RuntimeError|unreachable|out of bounds|WebGL/i.test(m) && !panelKind) showPanel("crash", T.lost, T.lostHint, m);
+          return true;
+        },
       }, function (p) {
         fill.style.width = (100 * p) + "%";
-        pct.textContent = "LOADING  " + Math.round(100 * p) + "%";
+        pct.textContent = p >= 1 ? T.start : T.load + "  " + Math.round(100 * p) + "%";
+        if (p >= 1 && !stallTimer) armStall(60000);   // downloaded; wasm compile + start can be slow on weak phones
       }).then(function (unityInstance) {
         try { sessionStorage.removeItem("sr_retry"); } catch (x) {}
         var keepRatio = function () { if (unityInstance.Module) unityInstance.Module.devicePixelRatio = srPixelRatio(); };
         window.addEventListener("resize", keepRatio); window.addEventListener("orientationchange", keepRatio);
-        document.querySelector("#loading").classList.add("done");
+        pct.textContent = T.start;
+        if (window.__srFirstFrame) reveal();
+        else armStall(30000);   // no drawn frame 30 s after start-up → message + tap to retry (hidden again if it draws later)
         canvas.focus();
         document.querySelector("#fs").onclick = function () { unityInstance.SetFullscreen(1); };
         // phones / tablets: the corner button sat on top of the in-game FIRE and sound buttons → hide it once the game runs and
@@ -199,6 +281,13 @@
         }
         canvas.addEventListener("pointerdown", function () { canvas.focus(); });
       }).catch(function (message) {
+        // v8.1: no WebGL (2) in this browser (Unity's loader checks before downloading) → say so in the player's language;
+        // retrying / clearing the download cache can't help here
+        if (/WebGL/i.test(String(message))) {
+          clearTimeout(stallTimer);
+          showPanel("nogl", T.nogl, T.noglHint, message);
+          return;
+        }
         // a dropped connection (common on phones) leaves a cut-off download in the loader cache → every reload fails.
         // Drop only the download cache (never /idbfs = the save), then retry by itself twice before asking the player.
         function clearDownloads() {
@@ -210,22 +299,12 @@
         clearDownloads();
         if (tries < 2) {
           try { sessionStorage.setItem("sr_retry", tries + 1); } catch (x) {}
-          pct.textContent = "RETRYING";
+          pct.textContent = T.retry;
           setTimeout(function () { location.reload(); }, 800);
           return;
         }
-        var e = document.querySelector("#error");
-        e.style.display = "flex";
-        e.style.flexDirection = "column";
-        e.style.cursor = "pointer";
-        e.innerHTML = '<div style="font-size:20px;letter-spacing:.12em;color:#f4f1ea">DOWNLOAD INTERRUPTED</div>'
-          + '<div style="margin-top:10px;opacity:.75">Check your connection (Wi-Fi works best) and tap to try again.</div>'
-          + '<div style="margin-top:22px;font-size:11px;opacity:.35"></div>';
-        e.lastChild.textContent = String(message);
-        e.onclick = function () {
-          try { sessionStorage.removeItem("sr_retry"); } catch (x) {}
-          location.reload();
-        };
+        clearTimeout(stallTimer);
+        showPanel("fail", T.fail, T.failHint, message);
       });
     </script>
   </body>
