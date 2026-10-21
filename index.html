@@ -141,7 +141,7 @@
         };
       })();
     </script>
-    <script src="Build/web2.loader.js"></script>
+    <script src="Build/web3.loader.js"></script>
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
@@ -234,9 +234,9 @@
         arguments: /[?&]selftest\b/.test(location.search) ? ["-autotest", "25", "-seed", "12345"]
           : /[?&]touchtest\b/.test(location.search) ? ["-v8touch", "-seed", "12345", "-timescale", "1", "-savekey", "webtouch"]
           : /[?&]v81web\b/.test(location.search) ? ["-v81web", "-seed", "12345", "-timescale", "1", "-savekey", "webv81"] : [],
-        dataUrl: "Build/web2.data.unityweb",
-        frameworkUrl: "Build/web2.framework.js.unityweb",
-        codeUrl: "Build/web2.wasm.unityweb",
+        dataUrl: "Build/web3.data.unityweb",
+        frameworkUrl: "Build/web3.framework.js.unityweb",
+        codeUrl: "Build/web3.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Doston",
         productName: "Sunrift",
