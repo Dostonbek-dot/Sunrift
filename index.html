@@ -141,7 +141,7 @@
         };
       })();
     </script>
-    <script src="Build/web1.loader.js"></script>
+    <script src="Build/web3.loader.js"></script>
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
@@ -225,7 +225,7 @@
         var d = window.devicePixelRatio || 1;
         if (!(window.matchMedia && matchMedia("(pointer: coarse)").matches)) return Math.min(d, 1.25);
         var shortSide = Math.min(window.innerWidth, window.innerHeight);
-        if (shortSide * 1.25 < 600) return Math.max(1, Math.min(d, 590 / shortSide));   // phones
+        if (shortSide * 1.25 < 600) return Math.min(d, 2.5);   // phones: v8.6 full sharpness (the game sizes its layout in CSS px)
         return Math.min(d, 2);                                                            // tablets
       }
       createUnityInstance(canvas, {
@@ -234,16 +234,16 @@
         arguments: /[?&]selftest\b/.test(location.search) ? ["-autotest", "25", "-seed", "12345"]
           : /[?&]touchtest\b/.test(location.search) ? ["-v8touch", "-seed", "12345", "-timescale", "1", "-savekey", "webtouch"]
           : /[?&]v81web\b/.test(location.search) ? ["-v81web", "-seed", "12345", "-timescale", "1", "-savekey", "webv81"] : [],
-        dataUrl: "Build/web1.data.unityweb",
-        frameworkUrl: "Build/web1.framework.js.unityweb",
-        codeUrl: "Build/web1.wasm.unityweb",
+        dataUrl: "Build/web3.data.unityweb",
+        frameworkUrl: "Build/web3.framework.js.unityweb",
+        codeUrl: "Build/web3.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Doston",
         productName: "Sunrift",
         productVersion: "1.0.0",
-        // pixel ratio: laptops 1.25 (fill rate); phones as sharp as possible while the canvas stays < 600 px tall — the game's
-        // phone layout (big cards / text, TouchInput.PhoneLayout) switches on below 600 px, and a flat 2× pushed phones into the
-        // tiny desktop layout; tablets up to 2. Re-applied on resize / rotation (see below).
+        // pixel ratio: laptops 1.25 (fill rate); phones up to 2.5 (v8.6 — before, ≤ 590 px tall, stretched ~2× = blurry; the
+        // game now detects a phone in CSS px and draws the 3D at a pixel budget, GameSettings); tablets up to 2. Re-applied on
+        // resize / rotation (see below).
         devicePixelRatio: srPixelRatio(),
         // v8.1: crashes while running (out of memory, wasm abort) used to raise an English developer alert() — which Telegram's
         // in-app browser swallows → black screen. Show the localized panel instead; anything else is only logged.
