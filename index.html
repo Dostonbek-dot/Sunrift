@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes, viewport-fit=cover">
     <title>Sunrift</title>
     <link rel="icon" href="favicon.ico" sizes="32x32">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -29,7 +29,14 @@
       #unity-canvas { width: 100%; height: 100%; display: block; background: #120a1c; outline: none; }
       /* v8 phones / tablets: fill the whole screen (the game lays out for wide phone aspects; a 16:9 letterbox shrank the
          touch UI by ~20 % and left black side bars) */
-      @media (pointer: coarse) { #frame { width: 100vw; height: 100vh; } }
+      /* v8.7: = the VISIBLE area (fixed + inset 0), not 100vh — vh counts the browser bars as hidden, so with Chrome's URL bar /
+         Telegram's header / Safari's tab bar showing the canvas overflowed and the top + bottom of the game were cut off.
+         Padding = the notch / camera cutout / home-indicator insets (viewport-fit=cover): the game never draws under them. */
+      @media (pointer: coarse) {
+        html, body { overscroll-behavior: none; }
+        #frame { position: fixed; inset: 0; left: 0; top: 0; transform: none; width: auto; height: auto; box-sizing: border-box; padding: 0;
+                 padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+      }
       #loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
                  background: radial-gradient(ellipse at 50% 60%, rgba(26,16,32,.15) 0%, rgba(11,6,18,.75) 100%), url("TemplateData/bg.jpg") center / cover, #1a1020;
                  transition: opacity .5s ease; }
@@ -141,7 +148,7 @@
         };
       })();
     </script>
-    <script src="Build/web3.loader.js"></script>
+    <script src="Build/web2.loader.js"></script>
     <script>
       var canvas = document.querySelector("#unity-canvas");
       var fill = document.querySelector("#fill"), pct = document.querySelector("#pct");
@@ -196,7 +203,13 @@
         if (revealed) return;
         revealed = true;
         clearTimeout(stallTimer);
-        hidePanel("stall");
+        hidePanel("stall"); hidePanel("dlstall");   // v8.7: the download came back after all
+        // v8.7: ask the browser to keep the save (IndexedDB) — best effort, once. Chrome grants it silently to engaged sites,
+        // Safari 17+ by its own rules (else a week without a visit can wipe it). Not Firefox: it would show a permission prompt.
+        try {
+          if (navigator.storage && navigator.storage.persist && !/Firefox\//.test(navigator.userAgent || ""))
+            navigator.storage.persisted().then(function (on) { if (!on) return navigator.storage.persist(); }).catch(function () {});
+        } catch (x) {}
         // two browser frames: the frame Unity just rendered is on screen before the loader fades
         requestAnimationFrame(function () { requestAnimationFrame(function () { document.querySelector("#loading").classList.add("done"); }); });
       }
@@ -216,11 +229,26 @@
         var ua = navigator.userAgent || "", ios = /iPhone|iPad|iPod/.test(ua);
         var inApp = /Telegram|Instagram|FBAN|FBAV|Line\//i.test(ua) || /; wv\)/.test(ua) || (ios && !/Safari\//.test(ua));
         if (!inApp) return;
-        var ru = RU, browser = ios ? "Safari" : "Chrome";
+        var ru = RU, browser = ios ? "Safari" : "Chrome", menu = ios ? "⋯" : "⋮";   // v8.7: iOS apps use a horizontal ⋯ menu
         var el = document.querySelector("#inapp");
-        el.textContent = ru ? "⋮ → «Открыть в " + browser + "» — игра пойдёт плавнее" : "⋮ → Open in " + browser + " for smoother play";
+        el.textContent = ru ? menu + " → «Открыть в " + browser + "» — игра пойдёт плавнее" : menu + " → Open in " + browser + " for smoother play";
         el.style.display = "block";
       })();
+      // v8.7: download watchdog — a mobile connection that stalls without closing (cell handover) used to freeze the bar forever
+      // (the stall timer only starts at 100 %). No progress for 45 s while the page is visible → the DOWNLOAD INTERRUPTED panel.
+      var lastP = -1, lastPT = Date.now();
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) lastPT = Date.now(); });
+      var dlWatch = setInterval(function () {
+        if (lastP >= 1 || revealed) { clearInterval(dlWatch); return; }
+        if (document.hidden || panelKind || Date.now() - lastPT < 45000) return;
+        clearInterval(dlWatch);
+        showPanel("dlstall", T.fail, T.failHint, "", function () {
+          try { indexedDB.deleteDatabase("UnityCache"); } catch (x) {}
+          try { if (window.caches) caches.delete("UnityCache"); } catch (x) {}
+          try { sessionStorage.removeItem("sr_retry"); } catch (x) {}
+          location.reload();
+        });
+      }, 5000);
       function srPixelRatio() {
         var d = window.devicePixelRatio || 1;
         if (!(window.matchMedia && matchMedia("(pointer: coarse)").matches)) return Math.min(d, 1.25);
@@ -234,9 +262,9 @@
         arguments: /[?&]selftest\b/.test(location.search) ? ["-autotest", "25", "-seed", "12345"]
           : /[?&]touchtest\b/.test(location.search) ? ["-v8touch", "-seed", "12345", "-timescale", "1", "-savekey", "webtouch"]
           : /[?&]v81web\b/.test(location.search) ? ["-v81web", "-seed", "12345", "-timescale", "1", "-savekey", "webv81"] : [],
-        dataUrl: "Build/web3.data.unityweb",
-        frameworkUrl: "Build/web3.framework.js.unityweb",
-        codeUrl: "Build/web3.wasm.unityweb",
+        dataUrl: "Build/web2.data.unityweb",
+        frameworkUrl: "Build/web2.framework.js.unityweb",
+        codeUrl: "Build/web2.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "Doston",
         productName: "Sunrift",
@@ -250,10 +278,14 @@
         errorHandler: function (msg) {
           var m = String(msg || "");
           console.error("[Sunrift] " + m);
-          if (/memory|abort|RuntimeError|unreachable|out of bounds|WebGL/i.test(m) && !panelKind) showPanel("crash", T.lost, T.lostHint, m);
+          // v8.7: browser DOM errors (a cancelled share sheet = "AbortError", a refused clipboard = "NotAllowedError", …) reach this
+          // handler through Unity's unhandledrejection listener — never the crash panel ("abort" used to match AbortError)
+          if (/\b(AbortError|NotAllowedError|InvalidStateError|NotSupportedError|SecurityError|NotFoundError|DataError)\b/.test(m)) return true;
+          if (/memory|\babort\(|Aborted\(|RuntimeError|unreachable|out of bounds|WebGL/i.test(m) && !panelKind) showPanel("crash", T.lost, T.lostHint, m);
           return true;
         },
       }, function (p) {
+        if (p !== lastP) { lastP = p; lastPT = Date.now(); }
         fill.style.width = (100 * p) + "%";
         pct.textContent = p >= 1 ? T.start : T.load + "  " + Math.round(100 * p) + "%";
         if (p >= 1 && !stallTimer) armStall(60000);   // downloaded; wasm compile + start can be slow on weak phones
@@ -268,16 +300,41 @@
         document.querySelector("#fs").onclick = function () { unityInstance.SetFullscreen(1); };
         // phones / tablets: the corner button sat on top of the in-game FIRE and sound buttons → hide it once the game runs and
         // go fullscreen on the first tap instead (Android; iPhone Safari has no fullscreen API, so nothing happens there)
+        // v8.7: pause the run from the page (Core/WebBoot.cs PagePause → the same pause menu as a focus loss). Runs inside the
+        // browser event, so the run is already paused on the first frame back — Unity's own blur → OnApplicationFocus waits for a frame.
+        var pauseRun = function () { try { unityInstance.SendMessage("WebBoot", "PagePause"); } catch (x) {} };
+        document.addEventListener("visibilitychange", function () { if (document.hidden) pauseRun(); });
         if (window.matchMedia && matchMedia("(pointer: coarse)").matches) {
           document.querySelector("#fs").style.display = "none";
+          var isFull = function () { return !!(document.fullscreenElement || document.webkitFullscreenElement); };
           var goFull = function () {
             window.removeEventListener("touchend", goFull, true);
             var el = document.documentElement, rf = el.requestFullscreen || el.webkitRequestFullscreen;
-            if (rf && !(document.fullscreenElement || document.webkitFullscreenElement)) {
+            if (rf && !isFull()) {
               try { var r = rf.call(el); if (r && r.catch) r.catch(function () {}); } catch (x) {}
             }
           };
           window.addEventListener("touchend", goFull, true);
+          // v8.7: entering fullscreen → lock landscape (Android Chrome; a phone held flat no longer flips to portrait = pause);
+          // leaving it (back / swipe) → the next tap goes fullscreen again (before: once per visit, then clipped by the URL bar)
+          var onFullChange = function () {
+            if (isFull()) {
+              try { if (screen.orientation && screen.orientation.lock) { var l = screen.orientation.lock("landscape"); if (l && l.catch) l.catch(function () {}); } } catch (x) {}
+            } else {
+              window.removeEventListener("touchend", goFull, true);
+              window.addEventListener("touchend", goFull, true);
+            }
+          };
+          document.addEventListener("fullscreenchange", onFullChange); document.addEventListener("webkitfullscreenchange", onFullChange);
+          // v8.7: Android back / iOS edge-swipe back: one guard entry (pushed inside a tap, so browsers keep it) → the first back
+          // pauses the run instead of leaving the page; the next back leaves as normal (re-armed only by a later tap: never a trap)
+          var guarded = false;
+          var armGuard = function () {
+            if (guarded) return;
+            try { history.pushState({ srGuard: 1 }, "", location.href); guarded = true; } catch (x) {}
+          };
+          window.addEventListener("touchend", armGuard, true);
+          window.addEventListener("popstate", function () { if (guarded) { guarded = false; pauseRun(); } });
         }
         canvas.addEventListener("pointerdown", function () { canvas.focus(); });
       }).catch(function (message) {
